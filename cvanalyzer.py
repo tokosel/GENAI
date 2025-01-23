@@ -12,66 +12,102 @@ load_dotenv()
 genai.configure(api_key=os.getenv("GOOGLE_API_KEY"))
 
 def pdf_to_text(pdf_file):
-    """Extraire le texte de la première page du PDF"""
+    """Extraire le texte de toutes les pages du PDF"""
     pdf_document = fitz.open(stream=pdf_file.read(), filetype="pdf")
     text = ""
     for page in pdf_document:
         text += page.get_text()
     return text
 
-def get_gemini_response(job_description, cv_text):
+def get_gemini_response(job_description, cv_text, analysis_type):
     """Analyse du CV avec perspective de recrutement"""
-    prompt = f"""Agis en tant que chargé de recrutement expérimenté. 
-    Analyse ce CV par rapport à ce poste :
+    analysis_prompts = {
+        "Matching Général": f"""Agis en chargé de recrutement expert. 
+        Analyse ce CV par rapport à ce poste :
+        Descriptif du poste : {job_description}
+        CV analysé : {cv_text}
 
-    Descriptif du poste : {job_description}
+        Évalue précisément :
+        - Correspondance globale du profil
+        - Compétences clés
+        - Adéquation formation/expérience
+        - Potentiel pour le poste
 
-    CV analysé : {cv_text}
+        Format :
+        🎯 Taux de Matching : X%
+        🔑 Compétences Clés Alignées : [liste]
+        🚨 Points à Améliorer : [liste]
+        💡 Recommandations : [conseils]""",
 
-    Instructions pour ton analyse :
-    - Évalue précisément la correspondance du profil
-    - Identifie les points forts et points à améliorer
-    - Calcule un pourcentage de matching
-    - Sois objectif et pragmatique
-    - Donne des conseils de candidature
-    
-    Format de réponse :
-    🎯 Taux de Matching : X%
-    
-    Forces du candidat :
-    - [Liste des points positifs]
+        "Filtrage Technique": f"""Analyse technique du CV :
+        Poste : {job_description}
+        CV : {cv_text}
 
-    Points à améliorer :
-    - [Liste des points faibles]
+        Filtres :
+        - Technologies requises
+        - Niveau technique
+        - Certifications
+        - Expériences techniques précises
 
-    Recommandations :
-    - [Conseils pour améliorer la candidature]"""
+        Rapport :
+        ✅ Technologies Maîtrisées : [liste]
+        ❌ Technologies Manquantes : [liste]
+        📊 Score Technique : X/10""",
+
+        "Profil Psychologique": f"""Analyse comportementale du candidat :
+        Contexte : {job_description}
+        CV : {cv_text}
+
+        Évaluation :
+        - Soft skills
+        - Adaptabilité
+        - Potentiel de développement
+        - Alignement culturel
+
+        Insights :
+        🧠 Profil Psychologique : [description]
+        🤝 Compatibilité Culturelle : X%
+        🚀 Potentiel de Croissance : [évaluation]"""
+    }
+
+    prompt = analysis_prompts.get(analysis_type, analysis_prompts["Matching Général"])
 
     model = genai.GenerativeModel("gemini-1.5-flash-8b-exp-0827")
     response = model.generate_content(prompt)
     return response.text
 
-# Configuration de l'application Streamlit
-st.set_page_config(page_title="Analyse de CV")
-st.header("🔍 Analyse de CV - Abdoulaye's CV Matcher")
+# Configuration Streamlit
+st.set_page_config(page_title="Analyse de CV Pro", page_icon="🔍")
+st.header("🔍 Abdoulaye's CV Matcher 🚀")
 
-# Saisie de la description du poste
-job_description = st.text_area("Description du poste visé :", 
-                                placeholder="Ex: Développeur Python junior, 0-2 ans d'expérience, maîtrise de Django...", 
-                                key="job_input")
+# Options de personnalisation
+col1, col2 = st.columns(2)
+with col1:
+    job_description = st.text_area("Description du Poste", 
+                                   placeholder="Détails précis du poste...", 
+                                   key="job_input")
+
+with col2:
+    analysis_type = st.selectbox("Type d'Analyse", [
+        "Matching Général",
+        "Filtrage Technique", 
+        "Profil Psychologique"
+    ])
 
 # Téléchargement du CV
-uploaded_cv = st.file_uploader("Télécharger le CV (PDF)", type=["pdf"])
+uploaded_cv = st.file_uploader("Télécharger CV (PDF)", type=["pdf"], accept_multiple_files=True)
 
 # Bouton d'analyse
-if st.button("Analyser le CV") and uploaded_cv is not None and job_description:
-    # Extraction du texte du CV
-    cv_text = pdf_to_text(uploaded_cv)
-    
-    # Analyse avec Gemini
-    with st.spinner('Analyse en cours...'):
-        analysis = get_gemini_response(job_description, cv_text)
-    
-    # Affichage des résultats
-    st.subheader("📋 Résultat de l'analyse")
-    st.write(analysis)
+if st.button("Analyser") and uploaded_cv and job_description:
+    for cv_file in uploaded_cv:
+        # Extraction du texte du CV
+        cv_text = pdf_to_text(cv_file)
+        
+        # Analyse avec Gemini
+        with st.spinner(f'Analyse de {cv_file.name} en cours...'):
+            analysis = get_gemini_response(job_description, cv_text, analysis_type)
+        
+        # Affichage des résultats
+        st.subheader(f"📄 Résultat d'analyse de {cv_file.name}")
+        st.write(analysis)
+        st.divider()
